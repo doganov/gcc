@@ -2127,6 +2127,8 @@ dump_omp_loop_non_rect_expr (pretty_printer *pp, tree node, int spc,
    dumpfile.h).  If IS_STMT is true, the object printed is considered
    to be a statement and it is terminated by ';' if appropriate.  */
 
+static bool dump_s_expr = false; // FIXME: kaloian
+
 int
 dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
 		   bool is_stmt)
@@ -2153,6 +2155,12 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
     dump_location (pp, EXPR_LOCATION (node));
 
   code = TREE_CODE (node);
+  if (dump_s_expr) // FIXME: kaloian
+	{
+	  pp_string (pp, "(«"); // FIXME: kaloian
+	  pp_decimal_int (pp, (int) code); // FIXME: kaloian
+	  pp_string (pp, "» "); // FIXME: kaloian
+	}
   switch (code)
     {
     case ERROR_MARK:
@@ -4452,6 +4460,8 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
 
   if (is_stmt && is_expr)
     pp_semicolon (pp);
+
+  if (dump_s_expr) pp_string (pp, ")"); // FIXME: kaloian
 
   return spc;
 }

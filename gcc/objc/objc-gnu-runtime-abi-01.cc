@@ -25,6 +25,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree.h"
 #include "stringpool.h"
 #include "attribs.h"
+#include "gimple-expr.h"
+#include "print-tree.h" // FIXME: kill
 
 #ifdef OBJCPLUS
 #include "cp/cp-tree.h"
@@ -657,6 +659,112 @@ gnu_runtime_abi_01_build_typed_selector_reference (location_t loc, tree ident,
   return convert (objc_selector_type, expr);
 }
 
+// FIXME: name and doc
+/* Assign all arguments in VALUES which have side-effect to a temporary
+   and replaced that argument in VALUES list with the temporary. The
+   arguments will be passed to a function with FNTYPE.  */
+
+[[gnu::unused]] // FIXME: kill annotation
+static tree
+frobnicate_compound_expr (tree values, vec<tree, va_gc> *evalues)
+{
+  tree valtail;
+
+  for (valtail = values; valtail; valtail = TREE_CHAIN (valtail))
+    {
+      tree value = TREE_VALUE (valtail);
+      if (!TREE_SIDE_EFFECTS (value))
+	continue;
+      /* To prevent re-evaluation.  */
+      value = save_expr (value);
+      evalues->quick_push (value);
+      TREE_VALUE (valtail) = value;
+    }
+  return values;
+}
+
+// FIXME: name and doc
+/* Assign all arguments in VALUES which have side-effect to a temporary
+   and replaced that argument in VALUES list with the temporary. The
+   arguments will be passed to a function with FNTYPE.  */
+
+[[gnu::unused]] // FIXME: kill annotation
+static tree
+frobnicate (tree values)
+{
+  //fprintf (stderr, "objc_copy_to_temp_side_effect_params\n");
+  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: fntype:\n");
+  //debug_tree (fntype);
+  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: values:\n");
+  //debug_tree (values);
+
+  tree valtail;
+
+  for (valtail = values; valtail; valtail = TREE_CHAIN (valtail))
+    {
+      tree value = TREE_VALUE (valtail);
+	  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: value:\n"); // FIXME: kill
+	  //debug_tree (value); // FIXME: kill
+      if (!TREE_SIDE_EFFECTS (value))
+	continue;
+      /* To prevent re-evaluation.  */
+      value = save_expr (value);
+      add_stmt (value);
+      TREE_VALUE (valtail) = value;
+	  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: add_stmt\n"); // FIXME: kill
+    }
+  return values;
+}
+
+// FIXME: Consider moving this function to objc-runtime-shared-support.h/.cc
+/* Assign all arguments in VALUES which have side-effect to a temporary
+   and replaced that argument in VALUES list with the temporary. The
+   arguments will be passed to a function with FNTYPE.  */
+
+[[gnu::unused]] // FIXME: kill annotation
+static tree
+objc_copy_to_temp_side_effect_params (tree fntype, tree values)
+{
+  //fprintf (stderr, "objc_copy_to_temp_side_effect_params\n");
+  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: fntype:\n");
+  //debug_tree (fntype);
+  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: values:\n");
+  //debug_tree (values);
+
+  tree valtail;
+  function_args_iterator iter;
+
+  /* Skip over receiver and the &_msf_ref types.  */
+  function_args_iter_init (&iter, fntype);
+  function_args_iter_next (&iter);
+  function_args_iter_next (&iter);
+
+  for (valtail = values; valtail;
+       valtail = TREE_CHAIN (valtail), function_args_iter_next (&iter))
+    {
+      tree value = TREE_VALUE (valtail);
+      tree type = function_args_iter_cond (&iter);
+	  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: value:\n"); // FIXME: kill
+	  //debug_tree (value); // FIXME: kill
+	  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: type:\n"); // FIXME: kill
+	  //debug_tree (type); // FIXME: kill
+      if (type == NULL_TREE)
+	break;
+      if (!TREE_SIDE_EFFECTS (value))
+	continue;
+      /* To prevent re-evaluation.  */
+      value = save_expr (value);
+      add_stmt (value);
+      TREE_VALUE (valtail) = value;
+	  //fprintf (stderr, "objc_copy_to_temp_side_effect_params: add_stmt\n"); // FIXME: kill
+    }
+  return values;
+}
+
+// FIXME: kill
+//#define OBJC_METHOD_CALL_TARGET_EXPR 1
+#define OBJC_METHOD_CALL_COMPOUND_EXPR 1
+
 /* Build a tree expression to send OBJECT the operation SELECTOR,
    looking up the method on object LOOKUP_OBJECT (often same as OBJECT),
    assuming the method has prototype METHOD_PROTOTYPE.
@@ -670,6 +778,21 @@ build_objc_method_call (location_t loc, int super_flag, tree method_prototype,
 			tree lookup_object, tree selector,
 			tree method_params)
 {
+
+  fprintf (stderr, "\n\nbuild_objc_method_call:\n");
+
+  fprintf (stderr, "method_prototype:\n");
+  debug_tree (method_prototype);
+
+  //fprintf (stderr, "lookup_object:\n");
+  //debug_tree (lookup_object);
+
+  //fprintf (stderr, "selector:\n");
+  //debug_tree (selector);
+
+  fprintf (stderr, "method_params:\n");
+  debug_tree (method_params);
+
   tree sender = (super_flag ? umsg_super_decl
 			    : (flag_objc_direct_dispatch ? umsg_fast_decl
 							 : umsg_decl));
@@ -722,6 +845,28 @@ build_objc_method_call (location_t loc, int super_flag, tree method_prototype,
 
   /* Pass the selector to the method.  */
   parms->quick_push (selector);
+
+#ifdef OBJC_METHOD_CALL_TARGET_EXPR
+  /* Method parameters must be evaluated just before checking the receiver for
+	 nil, not earlier or later.  We arrange that evaluation with a statement
+	 list.  */
+  tree method_params_stmt_list = push_stmt_list (); // FIXME: name
+  // FIXME: add lookup_obj first
+  add_stmt (lookup_object);
+  //method_params = objc_copy_to_temp_side_effect_params (ftype, method_params);
+  method_params = frobnicate (method_params);
+  stmt_list_stack->pop ();
+#elif defined(OBJC_METHOD_CALL_COMPOUND_EXPR)
+  // FIXME: here we need frobnicate to return a vec.  Perhaps we need another
+  // version of frobnicate that takes a pre-allocated vec with enough capacity
+  // and pushes the needed elements to it.
+  vec<tree, va_gc> *side_effect_params;
+  vec_alloc (side_effect_params, nparm + 1); /* + lookup_object  */
+  // FIXME: quick push lookup object?  If so, side_effect_params is a bad name.
+  side_effect_params->quick_push (lookup_object);
+  method_params = frobnicate_compound_expr (method_params, side_effect_params);
+#endif
+
   /* Now append the remainder of the parms.  */
   if (nparm)
     for (; method_params; method_params = TREE_CHAIN (method_params))
@@ -732,6 +877,69 @@ build_objc_method_call (location_t loc, int super_flag, tree method_prototype,
 	      build_int_cst (TREE_TYPE (lookup_object), 0));
   t = build_function_call_vec (loc, vNULL, t, parms, NULL);
   vec_free (parms);
+
+#if defined(OBJC_METHOD_CALL_TARGET_EXPR) || defined(OBJC_METHOD_CALL_COMPOUND_EXPR)
+
+  /* receiver != nil ? t : 0 */
+
+  tree ftree = (TREE_CODE (ret_type) == RECORD_TYPE
+				|| TREE_CODE (ret_type) == UNION_TYPE) ?
+	/* An empty constructor is zero-filled by the middle end.  */
+	objc_build_constructor (ret_type, NULL)
+	:
+	/* (ret_type) 0 */
+	fold_convert (ret_type, integer_zero_node);
+
+  /* (lookup_object != (rcv_p) 0) */
+  tree ifexp = build_binary_op (loc, NE_EXPR,
+								lookup_object,
+								fold_convert (rcv_p, integer_zero_node), 1);
+
+#ifdef OBJCPLUS
+  /* ifexpr ? t : ftree */
+  t = build_conditional_expr (loc, ifexp, t, ftree,
+							  tf_warning_or_error);
+#else
+  /* (ret_type) (ifexpr ? t : ftree) */
+  t = build_conditional_expr (loc, ifexp, 1,
+							  t, NULL_TREE, loc,
+							  ftree, NULL_TREE, loc);
+  t = fold_convert (ret_type, t);
+#endif
+#endif
+
+#ifdef OBJC_METHOD_CALL_TARGET_EXPR
+  /* ({ method_params; t })  */
+
+  tree tmp_var = create_tmp_var_raw (ret_type);
+  //DECL_CONTEXT (tmp_var) = current_function_decl; // FIXME: kill?
+  t = build2 (MODIFY_EXPR, ret_type, tmp_var, t);
+
+  append_to_statement_list (t, &method_params_stmt_list);
+  t = build3 (BIND_EXPR, void_type_node, NULL_TREE, method_params_stmt_list,
+			  NULL_TREE);
+  TREE_SIDE_EFFECTS (t) = 1;
+
+  t = build4 (TARGET_EXPR, ret_type, tmp_var, t, NULL_TREE, NULL_TREE);
+#elif defined(OBJC_METHOD_CALL_COMPOUND_EXPR)
+  /* (side_effect_params, t)  */
+  // FIXME: Here we use the new frobnicate's vec with FOR_EACH_VEC_ELT_REVERSE
+  // to build nested COMPOUND_EXPR tree with all method params.
+  unsigned int i;
+  tree preevaluated;
+  FOR_EACH_VEC_ELT_REVERSE (*side_effect_params, i, preevaluated)
+	{
+	  t = build2 (COMPOUND_EXPR, ret_type, preevaluated, t);
+	}
+  vec_free (side_effect_params);
+
+  // FIXME: Then we build another COMPOUND_EXPR where left is receiver and
+  // right is t.
+#endif
+
+  fprintf (stderr, "OUTPUT TREE:\n"); // FIXME: kill
+  debug_tree (t); // FIXME: kill
+
   return t;
 }
 
