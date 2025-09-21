@@ -9701,9 +9701,11 @@ objc_gimplify_property_ref (tree *expr_p)
       call_exp = TREE_OPERAND (getter, 1);
     }
 #endif
-  gcc_checking_assert ((flag_objc_nilcheck
-			&& TREE_CODE (call_exp) == COND_EXPR)
-		       || TREE_CODE (call_exp) == CALL_EXPR);
+  gcc_checking_assert ((flag_next_runtime
+			&& ((flag_objc_nilcheck
+			     && TREE_CODE (call_exp) == COND_EXPR)
+			    || TREE_CODE (call_exp) == CALL_EXPR))
+		       || TREE_CODE (call_exp) == COMPOUND_EXPR);
 
   *expr_p = call_exp;
 }

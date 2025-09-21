@@ -657,6 +657,27 @@ gnu_runtime_abi_01_build_typed_selector_reference (location_t loc, tree ident,
   return convert (objc_selector_type, expr);
 }
 
+/* Assign each argument in VALUES with side-effects to a temporary and replace
+   that argument in VALUES list with the temporary.  Collect the temporaries in
+   EVALUES, which must already have enough capacity to contain them.  */
+static tree
+objc_copy_to_temp_side_effect_params (tree values, vec<tree, va_gc> *evalues)
+{
+  tree valtail;
+
+  for (valtail = values; valtail; valtail = TREE_CHAIN (valtail))
+    {
+      tree value = TREE_VALUE (valtail);
+      if (!TREE_SIDE_EFFECTS (value))
+	continue;
+      /* To prevent re-evaluation.  */
+      value = save_expr (value);
+      evalues->quick_push (value);
+      TREE_VALUE (valtail) = value;
+    }
+  return values;
+}
+
 /* Build a tree expression to send OBJECT the operation SELECTOR,
    looking up the method on object LOOKUP_OBJECT (often same as OBJECT),
    assuming the method has prototype METHOD_PROTOTYPE.
@@ -706,6 +727,16 @@ build_objc_method_call (location_t loc, int super_flag, tree method_prototype,
   /* Use SAVE_EXPR to avoid evaluating the receiver twice.  */
   lookup_object = save_expr (lookup_object);
 
+  /* Method parameters must be evaluated just before checking the receiver for
+     nil, not earlier or later.  To arrange that evaluation, we need to wrap
+     those parameters with side effects as temporaries, and collect the
+     temporaries.  */
+  vec<tree, va_gc> *side_effect_params;
+  vec_alloc (side_effect_params, nparm + 1); /* + lookup_object */
+  side_effect_params->quick_push (lookup_object);
+  method_params = objc_copy_to_temp_side_effect_params (method_params,
+							side_effect_params);
+
   /* Param list + 2 slots for object and selector.  */
   vec_alloc (parms, nparm + 2);
   vec_alloc (tv, 2);
@@ -732,6 +763,40 @@ build_objc_method_call (location_t loc, int super_flag, tree method_prototype,
 	      build_int_cst (TREE_TYPE (lookup_object), 0));
   t = build_function_call_vec (loc, vNULL, t, parms, NULL);
   vec_free (parms);
+
+  /* receiver != nil ? t : 0 */
+
+  tree ftree = (TREE_CODE (ret_type) == RECORD_TYPE
+		|| TREE_CODE (ret_type) == UNION_TYPE)
+    ? /* An empty constructor is zero-filled by the middle end.  */
+    objc_build_constructor (ret_type, NULL)
+    : /* (ret_type) 0 */
+    fold_convert (ret_type, integer_zero_node);
+
+  /* (lookup_object != (rcv_p) 0) */
+  tree ifexp = build_binary_op (loc, NE_EXPR,
+				lookup_object,
+				fold_convert (rcv_p, integer_zero_node), 1);
+
+#ifdef OBJCPLUS
+  /* ifexpr ? t : ftree */
+  t = build_conditional_expr (loc, ifexp, t, ftree, tf_warning_or_error);
+#else
+  /* (ret_type) (ifexpr ? t : ftree) */
+  t = build_conditional_expr (loc, ifexp, 1,
+			      t, NULL_TREE, loc,
+			      ftree, NULL_TREE, loc);
+  t = fold_convert (ret_type, t);
+#endif
+
+  /* (side_effect_params, t) */
+  unsigned int i;
+  tree preevaluated;
+  FOR_EACH_VEC_ELT_REVERSE (*side_effect_params, i, preevaluated)
+    t = build2 (COMPOUND_EXPR, TREE_TYPE (t), preevaluated, t);
+  vec_free (side_effect_params);
+  SET_EXPR_LOCATION (t, loc);
+
   return t;
 }
 
