@@ -798,6 +798,10 @@ encode_gnu_bitfield (int position, tree type, int size)
 	    }
 	}
     }
+  else if (code == BOOLEAN_TYPE)
+    {
+      charType = 'B';
+    }
   else
     {
       /* Do not do any encoding, produce an error and keep going.  */
